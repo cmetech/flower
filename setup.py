@@ -45,14 +45,14 @@ classifiers = [s.strip() for s in classes.split('\n') if s]
 
 
 setup(
-    name='flower',
+    name='oscar-flower',
     version=get_package_version(),
-    description='Celery Flower',
+    description='Celery Flower - OSCAR Platform Customization',
     long_description=open('README.rst').read(),
     long_description_content_type="text/x-rst",
-    author='Mher Movsisyan',
-    author_email='mher.movsisyan@gmail.com',
-    url='https://github.com/mher/flower',
+    author='OSCAR Platform Team',
+    author_email='oscar-team@example.com',
+    url='https://github.com/oscar_app/flower',
     license='BSD',
     classifiers=classifiers,
     python_requires=">=3.7",
@@ -61,7 +61,8 @@ setup(
     test_suite="tests",
     tests_require=get_requirements('test.txt'),
     package_data={'flower': ['templates/*', 'static/*.*',
-                             'static/**/*.*', 'static/**/**/*.*']},
+                             'static/**/*.*', 'static/**/**/*.*',
+                             'static/images/*']},
     entry_points={
         'celery.commands': [
             'flower = flower.command:flower',

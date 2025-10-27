@@ -1,9 +1,510 @@
-// flower.scss
+// ============================================================================
+// OSCAR Platform Theme for Flower
+// Matches oscar-adminui Material-UI theme exactly
+// Based on UserThemeOptions.js color scheme
+// ============================================================================
 
-$primary: #348613;
-$link-color: #348613;
-$border-color: #c7ecb8;
-$table-striped-bg: #f0ffeb;
-$bg-light: #f0ffeb;
+// OSCAR Brand Colors (from UserThemeOptions.js)
+$oscar-yellow: #FAD22D;      // Primary brand color / accent
+$oscar-yellow-1: #F9DB56;
+$oscar-yellow-2: #FCE282;
+$oscar-yellow-3: #FCF2BF;
+$oscar-yellow-4: #C6A823;
 
+$oscar-black: #0C0C0C;       // Darkest background
+$oscar-gray-1: #242424;      // Dark background (primary)
+$oscar-gray-1b: #3A3A3A;     // Paper/card background
+$oscar-gray-1c: #4A4A4A;     // Lighter element background
+$oscar-gray-2: #767676;      // Medium gray
+$oscar-gray-3: #A0A0A0;      // Light gray / table headers
+$oscar-gray-4: #E0E0E0;      // Lighter gray
+$oscar-gray-5: #F2F2F2;      // Lightest gray / text
+
+// OSCAR Supporting Colors
+$oscar-blue: #4D97ED;
+$oscar-green: #0FC373;
+$oscar-red: #FF3232;
+$oscar-purple: #AF78D2;
+$oscar-orange: #FF8C0A;
+
+// Bootstrap Variable Overrides
+$primary: $oscar-yellow;
+$secondary: $oscar-gray-2;
+$success: $oscar-green;
+$danger: $oscar-red;
+$warning: $oscar-yellow;
+$info: $oscar-blue;
+$dark: $oscar-black;
+$light: $oscar-gray-5;
+
+// Body Colors
+$body-bg: $oscar-gray-1;           // #242424
+$body-color: $oscar-gray-5;        // #F2F2F2 (light text)
+
+// Component Colors
+$link-color: $oscar-yellow;
+$link-hover-color: $oscar-yellow-1;
+
+// Tables
+$table-bg: transparent;
+$table-accent-bg: $oscar-black;
+$table-hover-bg: $oscar-gray-1c;
+$table-striped-bg: $oscar-black;
+$table-color: $oscar-gray-5;
+$table-border-color: $oscar-gray-1c;
+$table-head-bg: $oscar-black;
+$table-head-color: $oscar-gray-3;
+
+// Cards
+$card-bg: $oscar-gray-1b;          // #3A3A3A (paper)
+$card-border-color: $oscar-gray-1c;
+$card-cap-bg: $oscar-gray-1;
+$card-color: $oscar-gray-5;
+
+// Navbar
+$navbar-dark-color: $oscar-gray-5;
+$navbar-dark-hover-color: $oscar-yellow;
+$navbar-dark-active-color: $oscar-yellow;
+$navbar-dark-brand-color: $oscar-yellow;
+$navbar-dark-brand-hover-color: $oscar-yellow-1;
+
+// Forms
+$input-bg: $oscar-gray-1c;
+$input-border-color: $oscar-gray-2;
+$input-color: $oscar-gray-5;
+$input-placeholder-color: $oscar-gray-3;
+$input-focus-border-color: $oscar-yellow;
+$input-focus-box-shadow: 0 0 0 0.25rem rgba(250, 210, 45, 0.25);
+
+// Buttons
+$btn-border-radius: 8px;           // OSCAR uses 8px border radius
+
+// Borders
+$border-color: $oscar-gray-1c;
+$border-radius: 8px;
+
+// Import Bootstrap
 @import "bootstrap";
+
+// ============================================================================
+// OSCAR-Specific Overrides
+// ============================================================================
+
+// Global Body Styling
+body {
+  background-color: $oscar-gray-1 !important;
+  color: $oscar-gray-5 !important;
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
+}
+
+// Navbar Styling
+.navbar {
+  background-color: $oscar-black !important;
+  border-bottom: 1px solid $oscar-gray-1c;
+  box-shadow: 0px 2px 10px 0px rgba(12, 12, 12, 0.5);
+
+  .navbar-brand {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: $oscar-yellow !important;
+    padding-left: 1rem; // Add left padding so logo isn't too close to edge
+
+    img {
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+    }
+
+    &:hover {
+      color: $oscar-yellow-1 !important;
+    }
+  }
+
+  .nav-link {
+    color: $oscar-gray-5 !important;
+    font-weight: 500;
+    transition: color 0.2s ease;
+
+    &:hover,
+    &.active {
+      color: $oscar-yellow !important;
+    }
+  }
+}
+
+// Card Components
+.card {
+  background-color: $oscar-gray-1b !important;
+  border-color: $oscar-gray-1c !important;
+  color: $oscar-gray-5 !important;
+  box-shadow: 0px 4px 8px -4px rgba(12, 12, 12, 0.42);
+  border-radius: 8px;
+
+  .card-header {
+    background-color: $oscar-gray-1 !important;
+    border-bottom-color: $oscar-gray-1c !important;
+    color: $oscar-gray-3 !important;
+    font-weight: 600;
+  }
+
+  .card-body {
+    color: $oscar-gray-5 !important;
+  }
+
+  .card-title {
+    color: $oscar-yellow !important;
+  }
+}
+
+// Table Styling
+.table {
+  color: $oscar-gray-5 !important;
+
+  thead {
+    th {
+      background-color: $oscar-black !important;
+      border-bottom-color: $oscar-gray-1c !important;
+      color: $oscar-gray-3 !important;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.875rem;
+      letter-spacing: 0.05em;
+    }
+  }
+
+  tbody {
+    tr {
+      background-color: transparent;
+
+      &:nth-of-type(odd) {
+        background-color: $oscar-black;
+      }
+
+      &:hover {
+        background-color: $oscar-gray-1c !important;
+      }
+
+      td {
+        border-bottom-color: $oscar-gray-1c !important;
+        color: $oscar-gray-5 !important;
+      }
+    }
+  }
+}
+
+// DataTables Dark Theme
+.dataTables_wrapper {
+  color: $oscar-gray-5 !important;
+
+  .dataTables_length,
+  .dataTables_filter {
+    color: $oscar-gray-5 !important;
+
+    label {
+      color: $oscar-gray-5 !important;
+    }
+  }
+
+  .dataTables_filter input,
+  .dataTables_length select {
+    background-color: $oscar-gray-1c !important;
+    border: 1px solid $oscar-gray-2 !important;
+    color: $oscar-gray-5 !important;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+
+    &:focus {
+      border-color: $oscar-yellow !important;
+      box-shadow: 0 0 0 0.25rem rgba(250, 210, 45, 0.25);
+      outline: none;
+    }
+  }
+
+  .dataTables_info,
+  .dataTables_paginate {
+    color: $oscar-gray-3 !important;
+  }
+
+  .dataTables_paginate {
+    .paginate_button {
+      color: $oscar-gray-5 !important;
+
+      &:hover {
+        color: $oscar-yellow !important;
+        background: none !important;
+        border-color: transparent !important;
+      }
+
+      &.current {
+        color: $oscar-yellow !important;
+        background: none !important;
+        border-color: transparent !important;
+      }
+
+      &.disabled {
+        color: $oscar-gray-2 !important;
+      }
+    }
+  }
+}
+
+// Badge Styling (OSCAR Colors)
+.badge {
+  border-radius: 8px;
+  font-weight: 600;
+
+  &.bg-success,
+  &.badge-success {
+    background-color: $oscar-green !important;
+    color: white !important;
+  }
+
+  &.bg-warning,
+  &.badge-warning {
+    background-color: $oscar-yellow !important;
+    color: $oscar-black !important;
+  }
+
+  &.bg-danger,
+  &.badge-danger {
+    background-color: $oscar-red !important;
+    color: white !important;
+  }
+
+  &.bg-info,
+  &.badge-info {
+    background-color: $oscar-blue !important;
+    color: white !important;
+  }
+
+  &.bg-primary,
+  &.badge-primary {
+    background-color: $oscar-yellow !important;
+    color: $oscar-black !important;
+  }
+}
+
+// Form Controls
+.form-control,
+.form-select {
+  background-color: $oscar-gray-1c !important;
+  border: 1px solid $oscar-gray-2 !important;
+  color: $oscar-gray-5 !important;
+  border-radius: 8px;
+
+  &:focus {
+    background-color: $oscar-gray-1c !important;
+    border-color: $oscar-yellow !important;
+    color: $oscar-gray-5 !important;
+    box-shadow: 0 0 0 0.25rem rgba(250, 210, 45, 0.25);
+  }
+
+  &::placeholder {
+    color: $oscar-gray-3 !important;
+  }
+
+  &:disabled {
+    background-color: $oscar-gray-1 !important;
+    color: $oscar-gray-2 !important;
+  }
+}
+
+// Buttons
+.btn {
+  border-radius: 8px;
+  font-weight: 600;
+  text-transform: none;
+  font-family: 'Montserrat', sans-serif;
+
+  &.btn-primary {
+    background-color: $oscar-yellow !important;
+    border-color: $oscar-yellow !important;
+    color: $oscar-black !important;
+
+    &:hover {
+      background-color: $oscar-yellow-1 !important;
+      border-color: $oscar-yellow-1 !important;
+    }
+  }
+
+  &.btn-success {
+    background-color: $oscar-green !important;
+    border-color: $oscar-green !important;
+  }
+
+  &.btn-danger {
+    background-color: $oscar-red !important;
+    border-color: $oscar-red !important;
+  }
+
+  &.btn-outline-primary {
+    border-color: $oscar-yellow !important;
+    color: $oscar-yellow !important;
+
+    &:hover {
+      background-color: $oscar-yellow !important;
+      color: $oscar-black !important;
+    }
+  }
+}
+
+// Alerts
+.alert {
+  border-radius: 8px;
+  border-width: 1px;
+
+  &.alert-success {
+    background-color: rgba(15, 195, 115, 0.15) !important;
+    color: #3FCE8E !important;
+    border-color: $oscar-green !important;
+  }
+
+  &.alert-danger {
+    background-color: rgba(255, 50, 50, 0.15) !important;
+    color: #FF5B5B !important;
+    border-color: $oscar-red !important;
+  }
+
+  &.alert-warning {
+    background-color: rgba(250, 210, 45, 0.15) !important;
+    color: $oscar-yellow-1 !important;
+    border-color: $oscar-yellow !important;
+  }
+
+  &.alert-info {
+    background-color: rgba(77, 151, 237, 0.15) !important;
+    color: #81BAF3 !important;
+    border-color: $oscar-blue !important;
+  }
+}
+
+// Dropdown Menus
+.dropdown-menu {
+  background-color: $oscar-gray-1b !important;
+  border-color: $oscar-gray-1c !important;
+  box-shadow: 0px 6px 18px -8px rgba(12, 12, 12, 0.56);
+
+  .dropdown-item {
+    color: $oscar-gray-5 !important;
+
+    &:hover,
+    &:focus {
+      background-color: $oscar-gray-1c !important;
+      color: $oscar-yellow !important;
+    }
+
+    &.active {
+      background-color: $oscar-yellow !important;
+      color: $oscar-black !important;
+    }
+  }
+
+  .dropdown-divider {
+    border-top-color: $oscar-gray-1c !important;
+  }
+}
+
+// Modal Dialogs
+.modal-content {
+  background-color: $oscar-gray-1b !important;
+  border-color: $oscar-gray-1c !important;
+  color: $oscar-gray-5 !important;
+
+  .modal-header {
+    background-color: $oscar-gray-1 !important;
+    border-bottom-color: $oscar-gray-1c !important;
+
+    .modal-title {
+      color: $oscar-yellow !important;
+    }
+
+    .btn-close {
+      filter: invert(1) grayscale(100%) brightness(200%);
+    }
+  }
+
+  .modal-footer {
+    border-top-color: $oscar-gray-1c !important;
+  }
+}
+
+// Tooltips
+.tooltip {
+  .tooltip-inner {
+    background-color: $oscar-gray-1 !important;
+    color: $oscar-gray-5 !important;
+    box-shadow: 0px 4px 8px -4px rgba(12, 12, 12, 0.42);
+  }
+
+  &.bs-tooltip-top .tooltip-arrow::before {
+    border-top-color: $oscar-gray-1 !important;
+  }
+
+  &.bs-tooltip-bottom .tooltip-arrow::before {
+    border-bottom-color: $oscar-gray-1 !important;
+  }
+
+  &.bs-tooltip-start .tooltip-arrow::before {
+    border-left-color: $oscar-gray-1 !important;
+  }
+
+  &.bs-tooltip-end .tooltip-arrow::before {
+    border-right-color: $oscar-gray-1 !important;
+  }
+}
+
+// Container Styling
+.container,
+.container-fluid {
+  color: $oscar-gray-5 !important;
+}
+
+// Links
+a {
+  color: $oscar-yellow !important;
+  text-decoration: none;
+
+  &:hover {
+    color: $oscar-yellow-1 !important;
+    text-decoration: underline;
+  }
+}
+
+// Text Colors
+.text-muted {
+  color: $oscar-gray-3 !important;
+}
+
+.text-warning {
+  color: $oscar-yellow !important;
+}
+
+.text-success {
+  color: $oscar-green !important;
+}
+
+.text-danger {
+  color: $oscar-red !important;
+}
+
+.text-info {
+  color: $oscar-blue !important;
+}
+
+// Scrollbars (Webkit)
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: $oscar-gray-1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $oscar-gray-2;
+  border-radius: 4px;
+
+  &:hover {
+    background: $oscar-gray-3;
+  }
+}

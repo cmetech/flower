@@ -691,3 +691,82 @@ var flower = (function () {
     });
 
 }(jQuery));
+
+// ============================================================================
+// Theme Toggle Functionality
+// ============================================================================
+(function() {
+    'use strict';
+
+    const THEME_KEY = 'oscar-flower-theme';
+    const LIGHT_THEME_CLASS = 'light-theme';
+
+    // Get theme preference from localStorage or default to 'dark'
+    function getThemePreference() {
+        return localStorage.getItem(THEME_KEY) || 'dark';
+    }
+
+    // Save theme preference to localStorage
+    function saveThemePreference(theme) {
+        localStorage.setItem(THEME_KEY, theme);
+    }
+
+    // Apply theme to html element (for proper CSS variable inheritance)
+    function applyTheme(theme) {
+        const html = document.documentElement;
+        const sunIcon = document.getElementById('theme-icon-light');
+        const moonIcon = document.getElementById('theme-icon-dark');
+        const logoDark = document.getElementById('logo-dark');
+        const logoLight = document.getElementById('logo-light');
+
+        if (theme === 'light') {
+            html.classList.add(LIGHT_THEME_CLASS);
+            // Show sun icon (offer light mode)
+            if (sunIcon) sunIcon.style.display = 'inline-block';
+            if (moonIcon) moonIcon.style.display = 'none';
+            // Show light logo for light mode
+            if (logoDark) logoDark.style.display = 'none';
+            if (logoLight) logoLight.style.display = 'inline-block';
+        } else {
+            html.classList.remove(LIGHT_THEME_CLASS);
+            // Show moon icon (offer dark mode)
+            if (sunIcon) sunIcon.style.display = 'none';
+            if (moonIcon) moonIcon.style.display = 'inline-block';
+            // Show dark logo for dark mode
+            if (logoDark) logoDark.style.display = 'inline-block';
+            if (logoLight) logoLight.style.display = 'none';
+        }
+    }
+
+    // Toggle between light and dark themes
+    function toggleTheme() {
+        const currentTheme = getThemePreference();
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        saveThemePreference(newTheme);
+        applyTheme(newTheme);
+    }
+
+    // Initialize theme on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Check if light theme was pre-loaded in head
+        const htmlElement = document.documentElement;
+        const preloadedLight = htmlElement.className.includes('light-theme-init');
+
+        // Clear the init class
+        htmlElement.className = '';
+
+        // Apply theme (use preloaded preference if available)
+        const theme = preloadedLight ? 'light' : getThemePreference();
+        applyTheme(theme);
+
+        // Add click handler to theme toggle button
+        const toggleButton = document.getElementById('theme-toggle');
+        if (toggleButton) {
+            toggleButton.addEventListener('click', function(e) {
+                e.preventDefault();
+                toggleTheme();
+            });
+        }
+    });
+
+})();

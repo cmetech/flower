@@ -4,7 +4,20 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Flower</title>
+    <title>OSCAR - Task Monitoring</title>
+    <link rel="icon" type="image/png" href="{{ static_url('images/favicon.png') }}">
+
+    <!-- Load theme preference immediately to prevent flash -->
+    <script>
+      (function() {
+        // Apply theme class synchronously before page renders
+        var theme = localStorage.getItem('oscar-flower-theme') || 'dark';
+        if (theme === 'light') {
+          document.documentElement.className = 'light-theme-init';
+        }
+      })();
+    </script>
+
   	<link rel="stylesheet" href="{{ static_url('css/bootstrap.min.css') }}">
 	  <link rel="stylesheet" href="{{ static_url('css/datatables-1.13.4.min.css') }}">
 	  <link href="{{ static_url('css/flower.css') }}" rel="stylesheet">
