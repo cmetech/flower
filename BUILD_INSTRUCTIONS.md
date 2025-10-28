@@ -74,7 +74,8 @@ cd ../oscar
 - `flower/templates/navbar.html` - OSCAR branding and Ericsson logo
 - `flower/templates/base.html` - Font imports
 - `bootstrap-scss/flower.scss` - Complete OSCAR theme (cleaned 540KB vs 280MB)
-- `flower/static/images/ericsson-logo-dark-48.png` - Ericsson logo
+- `flower/static/images/smart2d-logo-dark-48.png` - Smart2D logo (dark mode)
+- `flower/static/images/smart2d-logo-light-48.png` - Smart2D logo (light mode)
 - `setup.py` - Package name changed to oscar-flower
 
 ### Directory Structure:
