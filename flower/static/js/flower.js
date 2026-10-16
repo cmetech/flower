@@ -1,18 +1,68 @@
 /*jslint browser: true */
-/*global $, WebSocket, jQuery */
+/*global $, WebSocket, jQuery, bootstrap */
 
-var flower = (function () {
+(function () {
     "use strict";
 
-    var alertContainer = document.getElementById('alert-container');
+    var toastContainer = document.getElementById('toast-container');
+
+    document.querySelectorAll('[data-flower-tooltip]').forEach(function (element) {
+        var tooltip = bootstrap.Tooltip.getOrCreateInstance(element);
+
+        element.addEventListener('show.bs.tooltip', function () {
+            document.querySelectorAll('[data-flower-tooltip]').forEach(function (other) {
+                if (other !== element) {
+                    bootstrap.Tooltip.getInstance(other).hide();
+                }
+            });
+        });
+
+        element.addEventListener('show.bs.dropdown', function () {
+            tooltip.hide();
+            tooltip.disable();
+        });
+        element.addEventListener('hidden.bs.dropdown', function () {
+            tooltip.enable();
+        });
+    });
+
     function show_alert(message, type) {
-        var wrapper = document.createElement('div');
-        wrapper.innerHTML = `
-            <div class="alert alert-${type} alert-dismissible" role="alert">
-                <div>${message}</div>
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>`;
-        alertContainer.appendChild(wrapper);
+        var isError = type === 'danger',
+            toastElement = document.createElement('div'),
+            toastContent = document.createElement('div'),
+            toastBody = document.createElement('div'),
+            closeButton = document.createElement('button'),
+            toast;
+
+        toastElement.className = 'toast align-items-center text-bg-' + type + ' border-0';
+        toastElement.setAttribute('role', isError ? 'alert' : 'status');
+        toastElement.setAttribute('aria-live', isError ? 'assertive' : 'polite');
+        toastElement.setAttribute('aria-atomic', 'true');
+
+        toastContent.className = 'd-flex';
+        toastBody.className = 'toast-body';
+        toastBody.textContent = message;
+
+        closeButton.type = 'button';
+        closeButton.className = 'btn-close btn-close-white me-2 m-auto';
+        closeButton.setAttribute('data-bs-dismiss', 'toast');
+        closeButton.setAttribute('aria-label', 'Close');
+
+        toastContent.appendChild(toastBody);
+        toastContent.appendChild(closeButton);
+        toastElement.appendChild(toastContent);
+        toastContainer.appendChild(toastElement);
+
+        toastElement.addEventListener('hidden.bs.toast', function () {
+            toast.dispose();
+            toastElement.remove();
+        });
+
+        toast = bootstrap.Toast.getOrCreateInstance(toastElement, {
+            autohide: true,
+            delay: isError ? 10000 : 5000
+        });
+        toast.show();
     }
 
     function url_prefix() {
@@ -28,11 +78,98 @@ var flower = (function () {
         return '';
     }
 
+    function getCookie(name) {
+        var match = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return match ? decodeURIComponent(match.pop()) : '';
+    }
+
+    // Send the XSRF token on state-changing requests for the server's CSRF check
+    $.ajaxSetup({
+        beforeSend: function (xhr, settings) {
+            if (!/^(GET|HEAD|OPTIONS)$/i.test(settings.type)) {
+                xhr.setRequestHeader('X-XSRFToken', getCookie('_xsrf'));
+            }
+        }
+    });
+
     //https://github.com/DataTables/DataTables/blob/1.10.11/media/js/jquery.dataTables.js#L14882
     function htmlEscapeEntities(d) {
         return typeof d === 'string' ?
-            d.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') :
+            d.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') :
             d;
+    }
+
+    var MISSING_VALUE = '<span class="value-missing">\u2014</span>';
+
+    function tasksPageUrl(filters) {
+        var params = ['worker', 'state', 'name'].filter(function (key) {
+            return filters[key];
+        }).map(function (key) {
+            return key + '=' + encodeURIComponent(filters[key]);
+        });
+        return url_prefix() + '/tasks' + (params.length ? '?' + params.join('&') : '');
+    }
+
+    // Per-worker task counters link to the tasks page filtered to that worker
+    function taskCountRenderer(state) {
+        return function (data, type, full, meta) {
+            var count = data || 0;
+            if (type !== 'display' || !count) {
+                return count;
+            }
+            return '<a href="' + tasksPageUrl({worker: full.hostname, state: state}) + '">' + count.toLocaleString() + '</a>';
+        };
+    }
+
+    // DataTables writes cell values straight to innerHTML, so a column that
+    // does not build its own markup must be escaped
+    function withDefaultRenderer(columnDefs) {
+        columnDefs.forEach(function (def) {
+            if (!def.render) {
+                def.render = htmlEscapeEntities;
+            }
+        });
+        return columnDefs;
+    }
+
+    function workerNameLink(workerName) {
+        var name = String(workerName),
+            escapedName = htmlEscapeEntities(name),
+            suffixLength = name.length > 12 ? 12 : 0,
+            prefix = htmlEscapeEntities(name.substr(0, name.length - suffixLength)),
+            suffix = suffixLength ? htmlEscapeEntities(name.substr(-suffixLength)) : '';
+
+        return '<a class="worker-name-link" href="' + url_prefix() + '/worker/' +
+            encodeURIComponent(name) + '" aria-label="Worker ' + escapedName + '" title="' + escapedName + '">' +
+            '<span class="worker-name-prefix">' + prefix + '</span>' +
+            '<span class="worker-name-suffix">' + suffix + '</span></a>';
+    }
+
+    function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+
+        var textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        textarea.remove();
+        return Promise.resolve();
+    }
+
+    function showCopyConfirmation(button, copiedLabel, defaultLabel) {
+        button.classList.add('copied');
+        button.setAttribute('title', 'Copied');
+        button.setAttribute('aria-label', copiedLabel);
+        window.setTimeout(function () {
+            button.classList.remove('copied');
+            button.setAttribute('title', defaultLabel);
+            button.setAttribute('aria-label', defaultLabel);
+        }, 1500);
     }
 
     function active_page(name) {
@@ -363,7 +500,60 @@ var flower = (function () {
     });
 
     function sum(a, b) {
-        return parseInt(a, 10) + parseInt(b, 10);
+        var x = parseInt(a, 10), y = parseInt(b, 10);
+        return (isNaN(x) ? 0 : x) + (isNaN(y) ? 0 : y);
+    }
+
+    function workerMetricTotal(workers, name) {
+        return workers.reduce(function (total, worker) {
+            var value = Number(worker[name]);
+            return total + (isNaN(value) ? 0 : value);
+        }, 0);
+    }
+
+    function setWorkerMetric(id, value) {
+        document.getElementById(id).textContent = value.toLocaleString();
+    }
+
+    function updateWorkerSummary(workers) {
+        var online = workers.filter(function (worker) {
+            return worker.status;
+        }).length;
+
+        setWorkerMetric('workers-online', online);
+        setWorkerMetric('workers-active', workerMetricTotal(workers, 'active'));
+        setWorkerMetric('workers-succeeded', workerMetricTotal(workers, 'task-succeeded'));
+        setWorkerMetric('workers-failed', workerMetricTotal(workers, 'task-failed'));
+    }
+
+    function updateWorkerRefreshStatus(succeeded) {
+        var indicator = document.getElementById('workers-live-indicator'),
+            status = document.getElementById('workers-refresh-status');
+
+        indicator.classList.toggle('status-dot-live', succeeded);
+        indicator.classList.toggle('status-dot-error', !succeeded);
+        status.textContent = succeeded ?
+            'Updated ' + new Date().toLocaleTimeString() :
+            'Update failed';
+    }
+
+    // Mirrors flower.utils.template.format_duration
+    function formatDuration(seconds) {
+        seconds = Number(seconds);
+        if (seconds < 1) {
+            return (seconds * 1000).toFixed(2) + ' ms';
+        }
+        if (seconds < 60) {
+            return seconds.toFixed(2) + ' s';
+        }
+        var total = Math.round(seconds),
+            hours = Math.floor(total / 3600),
+            minutes = Math.floor((total % 3600) / 60),
+            secs = String(total % 60).padStart(2, '0');
+        if (hours) {
+            return hours + 'h ' + String(minutes).padStart(2, '0') + 'm ' + secs + 's';
+        }
+        return minutes + 'm ' + secs + 's';
     }
 
     function format_time(timestamp) {
@@ -377,17 +567,147 @@ var flower = (function () {
         return moment.unix(timestamp).tz(tz).format('YYYY-MM-DD HH:mm:ss.SSS');
     }
 
-    function isColumnVisible(name) {
-        var columns = $('#columns').val();
-        if (columns === "all")
-            return true;
-        if (columns) {
-            columns = columns.split(',').map(function (e) {
-                return e.trim();
-            });
-            return columns.indexOf(name) !== -1;
+    function usesNaturalTime() {
+        return $('#time').val().startsWith('natural-time');
+    }
+
+    // Column definitions for the tasks table, keyed by column slug
+    var taskColumns = {
+        name: {
+            render: function (data, type, full, meta) {
+                // The uuid column opens the task, the name lists its siblings
+                return '<a href="' + tasksPageUrl({name: data}) + '">' + htmlEscapeEntities(data) + '</a>';
+            }
+        },
+        uuid: {
+            orderable: false,
+            className: "text-nowrap",
+            render: function (data, type, full, meta) {
+                if (type !== 'display') {
+                    return data;
+                }
+                var escapedUuid = htmlEscapeEntities(data);
+                // Mobile width shows only the first uuid block, the link keeps the full id
+                return '<a href="' + url_prefix() + '/task/' + encodeURIComponent(data) +
+                    '" title="' + escapedUuid + '">' +
+                    '<span class="task-uuid-full">' + escapedUuid + '</span>' +
+                    '<span class="task-uuid-short">' + escapedUuid.slice(0, 8) + '</span></a>';
+            }
+        },
+        state: {
+            className: "text-center",
+            render: function (data, type, full, meta) {
+                var badge;
+                switch (data) {
+                case 'SUCCESS':
+                    badge = 'text-bg-success';
+                    break;
+                case 'FAILURE':
+                    badge = 'text-bg-danger';
+                    break;
+                case 'STARTED':
+                    badge = 'task-state-started';
+                    break;
+                case 'RETRY':
+                    badge = 'text-bg-warning';
+                    break;
+                default:
+                    badge = 'text-bg-secondary';
+                }
+                // celery reports unknown task-* events as custom states
+                return '<span class="badge ' + badge + '">' +
+                    htmlEscapeEntities(data) + '</span>';
+            }
+        },
+        args: {
+            className: "text-nowrap overflow-auto",
+            render: htmlEscapeEntities
+        },
+        kwargs: {
+            className: "text-nowrap overflow-auto",
+            render: htmlEscapeEntities
+        },
+        result: {
+            className: "text-nowrap overflow-auto",
+            render: htmlEscapeEntities
+        },
+        received: {
+            className: "text-center text-nowrap",
+            width: "1%",
+            render: function (data, type, full, meta) {
+                if (data) {
+                    if (type !== 'display') {
+                        return data;
+                    }
+                    if (usesNaturalTime()) {
+                        return format_time(data);
+                    }
+                    return '<time datetime="' + moment.unix(data).toISOString() +
+                        '" title="' + moment.unix(data).fromNow() + '">' +
+                        format_time(data) + '</time>';
+                }
+                return data;
+            }
+        },
+        started: {
+            className: "text-center text-nowrap",
+            render: function (data, type, full, meta) {
+                if (data) {
+                    return format_time(data);
+                }
+                return data;
+            }
+        },
+        runtime: {
+            className: "text-center text-nowrap",
+            render: function (data, type, full, meta) {
+                return data === null || data === undefined ? '' : formatDuration(data);
+            }
+        },
+        worker: {
+            render: function (data, type, full, meta) {
+                if (!data) {
+                    return '';
+                }
+                return type === 'display' ? workerNameLink(data) : data;
+            }
+        },
+        exchange: {},
+        routing_key: {},
+        retries: {
+            className: "text-center"
+        },
+        revoked: {
+            className: "text-center text-nowrap",
+            render: function (data, type, full, meta) {
+                if (data) {
+                    return format_time(data);
+                }
+                return data;
+            }
+        },
+        exception: {
+            className: "text-nowrap"
+        },
+        expires: {
+            className: "text-center"
+        },
+        eta: {
+            className: "text-center"
         }
-        return true;
+    };
+
+    function updateTaskStateButtons(state) {
+        $('.task-state-filter').each(function () {
+            var selected = $(this).data('task-state') === state;
+            $(this).toggleClass('active', selected);
+            $(this).attr('aria-pressed', selected);
+        });
+    }
+
+    function taskStateFromSearch(search) {
+        var match = /(?:^|\s)state:(STARTED|SUCCESS|FAILURE|RETRY)(?:\s|$)/i.exec(search);
+        return match ? match[1].toUpperCase() : '';
     }
 
     $.urlParam = function (name) {
@@ -404,6 +724,21 @@ var flower = (function () {
             shiftWindow();
         }
         window.addEventListener("hashchange", shiftWindow);
+
+        $('.task-uuid-copy').on('click', function () {
+            var button = this;
+            copyText(button.getAttribute('data-task-uuid')).then(function () {
+                showCopyConfirmation(button, 'Task UUID copied', 'Copy task UUID');
+            });
+        });
+
+        $('.task-traceback-copy').on('click', function () {
+            var button = this,
+                traceback = button.closest('.detail-code-wrapper').querySelector('code').textContent;
+            copyText(traceback).then(function () {
+                showCopyConfirmation(button, 'Stack trace copied', 'Copy stack trace');
+            });
+        });
 
         // Make bootstrap tabs persistent
         $(document).ready(function () {
@@ -426,42 +761,60 @@ var flower = (function () {
             return;
         }
 
-        $('#workers-table').DataTable({
+        var workersTable = $('#workers-table').DataTable({
             rowId: 'name',
+            createdRow: function (row, data) {
+                $(row).toggleClass('worker-offline', !data.status);
+            },
             searching: true,
             select: false,
             paging: true,
+            lengthChange: false,
+            scrollX: true,
             scrollCollapse: true,
-            lengthMenu: [15, 30, 50, 100],
             pageLength: 15,
             language: {
                 lengthMenu: 'Show _MENU_ workers',
                 info: 'Showing _START_ to _END_ of _TOTAL_ workers',
-                infoFiltered: '(filtered from _MAX_ total workers)'
+                infoFiltered: '(filtered from _MAX_ total workers)',
+                search: '<span class="visually-hidden">Search workers</span>',
+                searchPlaceholder: 'celery@hostname or online',
+                emptyTable: 'No workers are available.',
+                zeroRecords: 'No workers match your search.'
             },
-            ajax: url_prefix() + '/workers?json=1',
+            ajax: {
+                url: url_prefix() + '/workers?json=1',
+                dataSrc: function (response) {
+                    var workers = response.data || [];
+                    updateWorkerSummary(workers);
+                    updateWorkerRefreshStatus(true);
+                    return workers;
+                },
+                error: function () {
+                    updateWorkerRefreshStatus(false);
+                }
+            },
             order: [
                 [1, "des"]
             ],
             footerCallback: function( tfoot, data, start, end, display ) {
                 var api = this.api();
-                var columns = {2:"STARTED", 3:"", 4:"FAILURE", 5:"SUCCESS", 6:"RETRY"};
+                var columns = {2:"STARTED", 3:"", 4:"FAILURE", 5:"SUCCESS"};
                 for (const [column, state] of Object.entries(columns)) {
                     var total = api.column(column).data().reduce(sum, 0);
-                    var footer = total;
+                    var footer = total.toLocaleString();
                     if (total !== 0) {
-                        let queryParams = (state !== '' ? `?state=${state}` : '');
-                        footer = '<a href="' + url_prefix() + '/tasks' + queryParams + '">' + total + '</a>';
+                        footer = '<a href="' + tasksPageUrl({state: state}) + '">' + footer + '</a>';
                     }
                     $(api.column(column).footer()).html(footer);
                 }
             },
-            columnDefs: [{
+            columnDefs: withDefaultRenderer([{
                 targets: 0,
                 data: 'hostname',
                 type: 'natural',
                 render: function (data, type, full, meta) {
-                    return '<a href="' + url_prefix() + '/worker/' + encodeURIComponent(data) + '">' + data + '</a>';
+                    return type === 'display' ? workerNameLink(data) : data;
                 }
             }, {
                 targets: 1,
@@ -480,52 +833,65 @@ var flower = (function () {
                 data: 'active',
                 className: "text-center",
                 width: "10%",
-                defaultContent: 0
+                defaultContent: 0,
+                render: taskCountRenderer('STARTED')
             }, {
                 targets: 3,
                 data: 'task-received',
                 className: "text-center",
                 width: "10%",
-                defaultContent: 0
+                defaultContent: 0,
+                render: taskCountRenderer()
             }, {
                 targets: 4,
                 data: 'task-failed',
                 className: "text-center",
                 width: "10%",
-                defaultContent: 0
+                defaultContent: 0,
+                render: taskCountRenderer('FAILURE')
             }, {
                 targets: 5,
                 data: 'task-succeeded',
                 className: "text-center",
                 width: "10%",
-                defaultContent: 0
+                defaultContent: 0,
+                render: taskCountRenderer('SUCCESS')
             }, {
                 targets: 6,
-                data: 'task-retried',
-                className: "text-center",
-                width: "10%",
-                defaultContent: 0
-            }, {
-                targets: 7,
                 data: 'loadavg',
-                width: "10%",
+                width: "18%",
                 className: "text-center text-nowrap",
                 render: function (data, type, full, meta) {
                     if (!full.status) {
-                        return 'N/A';
+                        return type === 'display' ? MISSING_VALUE : '';
                     }
                     if (Array.isArray(data)) {
-                        return data.join(', ');
+                        if (type !== 'display') {
+                            return data.join(' ');
+                        }
+                        var periods = ['1m', '5m', '15m'],
+                            values = data.slice(0, periods.length).map(function (value) {
+                                return '<span class="load-average-value">' +
+                                    htmlEscapeEntities(String(value)) + '</span>';
+                            });
+                        return '<span class="load-average" title="System load averages over 1, 5, and 15 minutes"' +
+                            ' aria-label="System load averages: ' + periods.map(function (period, index) {
+                                return period + ' ' + htmlEscapeEntities(String(data[index]));
+                            }).join(', ') + '">' +
+                            values.join('') + '</span>';
                     }
-                    return data;
+                    if (!data) {
+                        return type === 'display' ? MISSING_VALUE : '';
+                    }
+                    return htmlEscapeEntities(String(data));
                 }
-            }, ],
+            }, ]),
         });
 
         var autorefresh_interval = $.urlParam('autorefresh') || 1;
         if (autorefresh !== 0) {
             setInterval( function () {
-                $('#workers-table').DataTable().ajax.reload(null, false);
+                workersTable.ajax.reload(null, false);
             }, autorefresh_interval * 1000);
         }
 
@@ -536,237 +902,91 @@ var flower = (function () {
             return;
         }
 
-        $('#tasks-table').DataTable({
+        var initialSearch = ['state', 'worker', 'name'].map(function (key) {
+                var value = decodeURIComponent($.urlParam(key) || '');
+                return value ? key + ':' + value : '';
+            }).filter(Boolean).join(' '),
+            // The server renders the header in the configured order
+            headerColumns = $('#tasks-table thead th').map(function () {
+                return $(this).data('column');
+            }).get(),
+            layout = headerColumns.join(','),
+            sortColumn = Math.max(headerColumns.indexOf('received'), 0),
+            tasksTable = $('#tasks-table').DataTable({
             rowId: 'uuid',
             searching: true,
+            searchDelay: 300,
             scrollX: true,
             scrollCollapse: true,
             processing: true,
             serverSide: true,
-            colReorder: true,
+            dom: "frt<'dt-footer'lip>",
             lengthMenu: [15, 30, 50, 100],
             pageLength: 15,
             stateSave: true,
+            stateSaveParams: function (settings, data) {
+                data.layout = layout;
+            },
+            stateLoadParams: function (settings, data) {
+                // Sort and visibility saved under another column layout point at the wrong columns
+                if (data.layout !== layout) {
+                    return false;
+                }
+                if (initialSearch) {
+                    data.search.search = initialSearch;
+                }
+            },
+            initComplete: function () {
+                $('#tasks-table_length select').attr('aria-label', 'Tasks per page');
+            },
             language: {
-                lengthMenu: 'Show _MENU_ tasks',
+                lengthMenu: '_MENU_',
                 info: 'Showing _START_ to _END_ of _TOTAL_ tasks',
-                infoFiltered: '(filtered from _MAX_ total tasks)'
+                infoEmpty: 'No tasks to show',
+                infoFiltered: '(filtered from _MAX_ total tasks)',
+                search: '<span class="visually-hidden">Search tasks</span>',
+                searchPlaceholder: 'state:FAILURE worker:celery@hostname',
+                emptyTable: 'No tasks have been received.',
+                zeroRecords: 'No tasks match your search.'
             },
             ajax: {
                 type: 'POST',
-                url: url_prefix() + '/tasks/datatable'
+                url: url_prefix() + '/tasks/datatable',
+                dataSrc: function (response) {
+                    var searchError = $('#task-search-error'),
+                        searchErrorMessage = $('#task-search-error-message');
+                    if (response.searchError) {
+                        searchErrorMessage.text(response.searchError);
+                        searchError.removeClass('d-none');
+                    } else {
+                        searchErrorMessage.text('');
+                        searchError.addClass('d-none');
+                    }
+                    return response.data;
+                }
             },
             order: [
-                [7, "desc"]
+                [sortColumn, "desc"]
             ],
             oSearch: {
-                "sSearch": $.urlParam('state') ? 'state:' + $.urlParam('state') : ''
+                "sSearch": initialSearch
             },
-            columnDefs: [{
-                targets: 0,
-                data: 'name',
-                visible: isColumnVisible('name'),
-                render: function (data, type, full, meta) {
-                    return data;
-                }
-            }, {
-                targets: 1,
-                data: 'uuid',
-                visible: isColumnVisible('uuid'),
-                orderable: false,
-                className: "text-nowrap",
-                render: function (data, type, full, meta) {
-                    return '<a href="' + url_prefix() + '/task/' + encodeURIComponent(data) + '">' + data + '</a>';
-                }
-            }, {
-                targets: 2,
-                data: 'state',
-                visible: isColumnVisible('state'),
-                className: "text-center",
-                render: function (data, type, full, meta) {
-                    switch (data) {
-                    case 'SUCCESS':
-                        return '<span class="badge bg-success">' + data + '</span>';
-                    case 'FAILURE':
-                        return '<span class="badge bg-danger">' + data + '</span>';
-                    default:
-                        return '<span class="badge bg-secondary">' + data + '</span>';
-                    }
-                }
-            }, {
-                targets: 3,
-                data: 'args',
-                className: "text-nowrap overflow-auto",
-                visible: isColumnVisible('args'),
-                render: htmlEscapeEntities
-            }, {
-                targets: 4,
-                data: 'kwargs',
-                className: "text-nowrap overflow-auto",
-                visible: isColumnVisible('kwargs'),
-                render: htmlEscapeEntities
-            }, {
-                targets: 5,
-                data: 'result',
-                visible: isColumnVisible('result'),
-                className: "text-nowrap overflow-auto",
-                render: htmlEscapeEntities
-            }, {
-                targets: 6,
-                data: 'received',
-                className: "text-nowrap",
-                visible: isColumnVisible('received'),
-                render: function (data, type, full, meta) {
-                    if (data) {
-                        return format_time(data);
-                    }
-                    return data;
-                }
-            }, {
-                targets: 7,
-                data: 'started',
-                className: "text-nowrap",
-                visible: isColumnVisible('started'),
-                render: function (data, type, full, meta) {
-                    if (data) {
-                        return format_time(data);
-                    }
-                    return data;
-                }
-            }, {
-                targets: 8,
-                data: 'runtime',
-                className: "text-center",
-                visible: isColumnVisible('runtime'),
-                render: function (data, type, full, meta) {
-                    return data ? data.toFixed(2) : data;
-                }
-            }, {
-                targets: 9,
-                data: 'worker',
-                visible: isColumnVisible('worker'),
-                render: function (data, type, full, meta) {
-                    return '<a href="' + url_prefix() + '/worker/' + encodeURIComponent(data) + '">' + data + '</a>';
-                }
-            }, {
-                targets: 10,
-                data: 'exchange',
-                visible: isColumnVisible('exchange')
-            }, {
-                targets: 11,
-                data: 'routing_key',
-                visible: isColumnVisible('routing_key')
-            }, {
-                targets: 12,
-                data: 'retries',
-                className: "text-center",
-                visible: isColumnVisible('retries')
-            }, {
-                targets: 13,
-                data: 'revoked',
-                className: "text-nowrap",
-                visible: isColumnVisible('revoked'),
-                render: function (data, type, full, meta) {
-                    if (data) {
-                        return format_time(data);
-                    }
-                    return data;
-                }
-            }, {
-                targets: 14,
-                data: 'exception',
-                className: "text-nowrap",
-                visible: isColumnVisible('exception')
-            }, {
-                targets: 15,
-                data: 'expires',
-                visible: isColumnVisible('expires')
-            }, {
-                targets: 16,
-                data: 'eta',
-                visible: isColumnVisible('eta')
-            }, ],
+            columns: withDefaultRenderer(headerColumns.map(function (name) {
+                return $.extend({data: name}, taskColumns[name]);
+            })),
+        });
+
+        updateTaskStateButtons(taskStateFromSearch(tasksTable.search()));
+        $('.task-state-filter').on('click', function () {
+            var state = $(this).data('task-state');
+            tasksTable.search(state ? 'state:' + state : '').draw();
+            updateTaskStateButtons(state);
+        });
+
+        tasksTable.on('search.dt', function () {
+            updateTaskStateButtons(taskStateFromSearch(tasksTable.search()));
         });
 
     });
 
 }(jQuery));
-
-// ============================================================================
-// Theme Toggle Functionality
-// ============================================================================
-(function() {
-    'use strict';
-
-    const THEME_KEY = 'oscar-flower-theme';
-    const LIGHT_THEME_CLASS = 'light-theme';
-
-    // Get theme preference from localStorage or default to 'dark'
-    function getThemePreference() {
-        return localStorage.getItem(THEME_KEY) || 'dark';
-    }
-
-    // Save theme preference to localStorage
-    function saveThemePreference(theme) {
-        localStorage.setItem(THEME_KEY, theme);
-    }
-
-    // Apply theme to html element (for proper CSS variable inheritance)
-    function applyTheme(theme) {
-        const html = document.documentElement;
-        const sunIcon = document.getElementById('theme-icon-light');
-        const moonIcon = document.getElementById('theme-icon-dark');
-        const logoDark = document.getElementById('logo-dark');
-        const logoLight = document.getElementById('logo-light');
-
-        if (theme === 'light') {
-            html.classList.add(LIGHT_THEME_CLASS);
-            // Show sun icon (offer light mode)
-            if (sunIcon) sunIcon.style.display = 'inline-block';
-            if (moonIcon) moonIcon.style.display = 'none';
-            // Show light logo for light mode
-            if (logoDark) logoDark.style.display = 'none';
-            if (logoLight) logoLight.style.display = 'inline-block';
-        } else {
-            html.classList.remove(LIGHT_THEME_CLASS);
-            // Show moon icon (offer dark mode)
-            if (sunIcon) sunIcon.style.display = 'none';
-            if (moonIcon) moonIcon.style.display = 'inline-block';
-            // Show dark logo for dark mode
-            if (logoDark) logoDark.style.display = 'inline-block';
-            if (logoLight) logoLight.style.display = 'none';
-        }
-    }
-
-    // Toggle between light and dark themes
-    function toggleTheme() {
-        const currentTheme = getThemePreference();
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        saveThemePreference(newTheme);
-        applyTheme(newTheme);
-    }
-
-    // Initialize theme on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        // Check if light theme was pre-loaded in head
-        const htmlElement = document.documentElement;
-        const preloadedLight = htmlElement.className.includes('light-theme-init');
-
-        // Clear the init class
-        htmlElement.className = '';
-
-        // Apply theme (use preloaded preference if available)
-        const theme = preloadedLight ? 'light' : getThemePreference();
-        applyTheme(theme);
-
-        // Add click handler to theme toggle button
-        const toggleButton = document.getElementById('theme-toggle');
-        if (toggleButton) {
-            toggleButton.addEventListener('click', function(e) {
-                e.preventDefault();
-                toggleTheme();
-            });
-        }
-    });
-
-})();

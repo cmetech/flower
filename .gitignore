@@ -139,10 +139,9 @@ site/
 *.retry
 
 # ============================================================================
-# Bootstrap - Keep only bootstrap-scss/ (cleaned SCSS-only version)
+# Bootstrap source downloads from scss/build.sh
 # ============================================================================
 bootstrap-*/
-!bootstrap-scss/
 
 # ============================================================================
 # Other

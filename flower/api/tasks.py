@@ -6,14 +6,14 @@ from datetime import datetime
 from celery import states
 from celery.backends.base import DisabledBackend
 from celery.contrib.abortable import AbortableAsyncResult
+from celery.exceptions import TimeoutError as CeleryTimeoutError
 from celery.result import AsyncResult
 from tornado import web
 from tornado.escape import json_decode
-from tornado.ioloop import IOLoop
 from tornado.web import HTTPError
 
 from ..utils import tasks
-from ..utils.broker import Broker
+from ..utils.search import QuerySyntaxError
 from . import BaseApiHandler
 
 logger = logging.getLogger(__name__)
@@ -44,8 +44,13 @@ class BaseTaskHandler(BaseApiHandler):
     def backend_configured(result):
         return not isinstance(result.backend, DisabledBackend)
 
-    def write_error(self, status_code, **kwargs):
-        self.set_status(status_code)
+    @staticmethod
+    def backend_connection_errors(result):
+        return getattr(result.backend, 'connection_errors', ()) or ()
+
+    @staticmethod
+    def result_state(result):
+        return result.state
 
     def update_response_result(self, response, result):
         if result.state == states.FAILURE:
@@ -112,13 +117,21 @@ Execute a task by name and wait results
       "result": 3
   }
 
+All other top-level request body properties are passed to ``Task.apply_async``.
+
 :query args: a list of arguments
 :query kwargs: a dictionary of arguments
+:query timeout: timeout in seconds
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
+:statuscode 400: invalid options
 :statuscode 401: unauthorized request
+:statuscode 403: read only mode is enabled
 :statuscode 404: unknown task
         """
+        if self.application.options.read_only:
+            raise web.HTTPError(403, "Read only mode is enabled")
+
         args, kwargs, options = self.get_task_args()
         logger.debug("Invoking a task '%s' with '%s' and '%s'",
                      taskname, args, kwargs)
@@ -128,21 +141,35 @@ Execute a task by name and wait results
         except KeyError as exc:
             raise HTTPError(404, f"Unknown task '{taskname}'") from exc
 
+        timeout = options.pop('timeout', None)
+        try:
+            timeout = float(timeout) if timeout is not None else None
+        except (TypeError, ValueError) as exc:
+            raise HTTPError(400, 'Invalid timeout') from exc
+
         try:
             self.normalize_options(options)
         except ValueError as exc:
             raise HTTPError(400, 'Invalid option') from exc
 
-        result = task.apply_async(args=args, kwargs=kwargs, **options)
+        result = await self.run_blocking(
+            'task.publish', taskname, task.apply_async,
+            args=args, kwargs=kwargs, **options)
         response = {'task-id': result.task_id}
 
-        response = await IOLoop.current().run_in_executor(
-            None, self.wait_results, result, response)
+        response = await self.run_blocking(
+            'task.result_wait', result.task_id, self.wait_results,
+            result, response, timeout,
+            connection_errors=self.backend_connection_errors(result))
         self.write(response)
 
-    def wait_results(self, result, response):
+    def wait_results(self, result, response, timeout=None):
         # Wait until task finished and do not raise anything
-        result.get(propagate=False)
+        try:
+            result.get(propagate=False, timeout=timeout)
+        except CeleryTimeoutError:
+            response.update(state=result.state)
+            return response
         # Write results and finish async function
         self.update_response_result(response, result)
         if self.backend_configured(result):
@@ -153,7 +180,7 @@ Execute a task by name and wait results
 class TaskAsyncApply(BaseTaskHandler):
 
     @web.authenticated
-    def post(self, taskname):
+    async def post(self, taskname):
         """
 Execute a task
 
@@ -186,14 +213,19 @@ Execute a task
       "task-id": "abc300c7-2922-4069-97b6-a635cc2ac47c"
   }
 
+All other top-level request body properties are passed to ``Task.apply_async``.
+
 :query args: a list of arguments
 :query kwargs: a dictionary of arguments
-:query options: a dictionary of `apply_async` keyword arguments
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
 :statuscode 401: unauthorized request
+:statuscode 403: read only mode is enabled
 :statuscode 404: unknown task
         """
+        if self.application.options.read_only:
+            raise web.HTTPError(403, "Read only mode is enabled")
+
         args, kwargs, options = self.get_task_args()
         logger.debug("Invoking a task '%s' with '%s' and '%s'",
                      taskname, args, kwargs)
@@ -208,16 +240,22 @@ Execute a task
         except ValueError as exc:
             raise HTTPError(400, 'Invalid option') from exc
 
-        result = task.apply_async(args=args, kwargs=kwargs, **options)
+        result = await self.run_blocking(
+            'task.publish', taskname, task.apply_async,
+            args=args, kwargs=kwargs, **options)
         response = {'task-id': result.task_id}
         if self.backend_configured(result):
-            response.update(state=result.state)
+            state = await self.run_blocking(
+                'task.result_state', result.task_id, self.result_state,
+                result,
+                connection_errors=self.backend_connection_errors(result))
+            response.update(state=state)
         self.write(response)
 
 
 class TaskSend(BaseTaskHandler):
     @web.authenticated
-    def post(self, taskname):
+    async def post(self, taskname):
         """
 Execute a task by name (doesn't require task sources)
 
@@ -249,27 +287,37 @@ Execute a task by name (doesn't require task sources)
       "task-id": "c60be250-fe52-48df-befb-ac66174076e6"
   }
 
+All other top-level request body properties are passed to ``Celery.send_task``.
+
 :query args: a list of arguments
 :query kwargs: a dictionary of arguments
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
 :statuscode 401: unauthorized request
-:statuscode 404: unknown task
+:statuscode 403: read only mode is enabled
         """
+        if self.application.options.read_only:
+            raise web.HTTPError(403, "Read only mode is enabled")
+
         args, kwargs, options = self.get_task_args()
         logger.debug("Invoking task '%s' with '%s' and '%s'",
                      taskname, args, kwargs)
-        result = self.capp.send_task(
+        result = await self.run_blocking(
+            'task.publish', taskname, self.capp.send_task,
             taskname, args=args, kwargs=kwargs, **options)
         response = {'task-id': result.task_id}
         if self.backend_configured(result):
-            response.update(state=result.state)
+            state = await self.run_blocking(
+                'task.result_state', result.task_id, self.result_state,
+                result,
+                connection_errors=self.backend_connection_errors(result))
+            response.update(state=state)
         self.write(response)
 
 
 class TaskResult(BaseTaskHandler):
     @web.authenticated
-    def get(self, taskid):
+    async def get(self, taskid):
         """
 Get a task result
 
@@ -297,28 +345,36 @@ Get a task result
 :query timeout: how long to wait, in seconds, before the operation times out
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
+:statuscode 400: invalid timeout
 :statuscode 401: unauthorized request
 :statuscode 503: result backend is not configured
         """
-        timeout = self.get_argument('timeout', None)
-        timeout = float(timeout) if timeout is not None else None
+        timeout = self.get_argument('timeout', None, type=float)
 
         result = AsyncResult(taskid)
         if not self.backend_configured(result):
             raise HTTPError(503)
-        response = {'task-id': taskid, 'state': result.state}
+        response = await self.run_blocking(
+            'task.result', taskid, self.read_result, result, timeout,
+            connection_errors=self.backend_connection_errors(result))
+        self.write(response)
 
+    def read_result(self, result, timeout):
+        response = {'task-id': result.id, 'state': result.state}
         if timeout:
-            result.get(timeout=timeout, propagate=False)
+            try:
+                result.get(timeout=timeout, propagate=False)
+            except CeleryTimeoutError:
+                return response
             self.update_response_result(response, result)
         elif result.ready():
             self.update_response_result(response, result)
-        self.write(response)
+        return response
 
 
 class TaskAbort(BaseTaskHandler):
     @web.authenticated
-    def post(self, taskid):
+    async def post(self, taskid):
         """
 Abort a running task
 
@@ -344,17 +400,23 @@ Abort a running task
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
 :statuscode 401: unauthorized request
+:statuscode 403: read only mode is enabled
 :statuscode 503: result backend is not configured
         """
+        if self.application.options.read_only:
+            raise web.HTTPError(403, "Read only mode is enabled")
+
         logger.info("Aborting task '%s'", taskid)
 
         result = AbortableAsyncResult(taskid)
         if not self.backend_configured(result):
             raise HTTPError(503)
 
-        result.abort()
+        await self.run_blocking(
+            'task.abort', taskid, result.abort,
+            connection_errors=self.backend_connection_errors(result))
 
-        self.write(dict(message=f"Aborted '{taskid}'"))
+        self.write({'message': f"Aborted '{taskid}'"})
 
 
 class GetQueueLengths(BaseTaskHandler):
@@ -367,7 +429,7 @@ Return length of all active queues
 
 .. sourcecode:: http
 
-  GET /api/queues/length
+  GET /api/queues/length HTTP/1.1
   Host: localhost:5555
 
 **Example response**:
@@ -388,24 +450,16 @@ Return length of all active queues
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
 :statuscode 401: unauthorized request
-:statuscode 503: result backend is not configured
+:statuscode 404: broker is not supported
         """
-        app = self.application
-
-        http_api = None
-        if app.transport == 'amqp' and app.options.broker_api:
-            http_api = app.options.broker_api
-
-        broker = Broker(app.capp.connection().as_uri(include_password=True),
-                        http_api=http_api, broker_options=self.capp.conf.broker_transport_options,
-                        broker_use_ssl=self.capp.conf.broker_use_ssl)
-
+        broker = self.get_broker()
         queues = await broker.queues(self.get_active_queue_names())
         self.write({'active_queues': queues})
 
 
 class ListTasks(BaseTaskHandler):
     @web.authenticated
+    # pylint: disable=too-many-locals
     def get(self):
         """
 List tasks
@@ -493,12 +547,14 @@ List tasks
 :query state: filter tasks by state
 :query received_start: filter tasks by received date (must be greater than) format %Y-%m-%d %H:%M
 :query received_end: filter tasks by received date (must be less than) format %Y-%m-%d %H:%M
+:query search: search task details using the task-filter query syntax
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
+:statuscode 400: invalid query parameters
 :statuscode 401: unauthorized request
         """
         app = self.application
-        limit = self.get_argument('limit', None)
+        limit = self.get_argument('limit', None, type=int)
         offset = self.get_argument('offset', default=0, type=int)
         worker = self.get_argument('workername', None)
         type = self.get_argument('taskname', None)
@@ -506,27 +562,42 @@ List tasks
         received_start = self.get_argument('received_start', None)
         received_end = self.get_argument('received_end', None)
         sort_by = self.get_argument('sort_by', None)
-        search = self.get_argument('search', None)
+        search = self.get_argument('search', None, escape=False)
 
-        limit = limit and int(limit)
         offset = max(offset, 0)
         worker = worker if worker != 'All' else None
         type = type if type != 'All' else None
         state = state if state != 'All' else None
 
+        if sort_by and sort_by.lstrip('-') not in tasks.SORT_KEYS:
+            raise HTTPError(
+                400,
+                f"Invalid sort_by '{sort_by}', expected one of "
+                f"{', '.join(sorted(tasks.SORT_KEYS))}")
+
         result = []
-        for task_id, task in tasks.iter_tasks(
-                app.events, limit=limit, offset=offset, sort_by=sort_by, type=type,
-                worker=worker, state=state,
-                received_start=received_start,
-                received_end=received_end,
-                search=search
-        ):
-            task = tasks.as_dict(task)
-            worker = task.pop('worker', None)
-            if worker is not None:
-                task['worker'] = worker.hostname
-            result.append((task_id, task))
+        try:
+            task_iterator = tasks.iter_tasks(
+                    app.events, limit=limit, offset=offset, sort_by=sort_by, type=type,
+                    worker=worker, state=state,
+                    received_start=received_start,
+                    received_end=received_end,
+                    search=search
+            )
+            for task_id, task in task_iterator:
+                task = tasks.as_dict(task)
+                worker = task.pop('worker', None)
+                if worker is not None:
+                    task['worker'] = worker.hostname
+                result.append((task_id, task))
+        except QuerySyntaxError as exc:
+            self.set_status(400)
+            self.write({'error': str(exc)})
+            return
+        except ValueError as exc:
+            raise HTTPError(
+                400, "Invalid received_start or received_end, "
+                "expected format 'YYYY-MM-DD HH:MM'") from exc
         self.write(OrderedDict(result))
 
 

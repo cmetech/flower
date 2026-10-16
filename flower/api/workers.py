@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from tornado import web
@@ -144,7 +143,8 @@ List workers
   }
 
 :query refresh: run inspect to get updated list of workers
-:query workername: get info for workername
+:query workername: get info for workername; the active, scheduled, reserved
+                   and revoked task lists are only fetched for a single worker
 :query status: only get worker status info
 :reqheader Authorization: optional OAuth token to authenticate
 :statuscode 200: no error
@@ -156,7 +156,7 @@ List workers
 
         if refresh:
             try:
-                await asyncio.wait(self.application.update_workers(workername=workername))
+                await self.application.update_workers(workername=workername)
             except Exception as e:
                 msg = f"Failed to update workers: {e}"
                 logger.error(msg)

@@ -1,24 +1,22 @@
-import os
-import sys
 import atexit
-import signal
 import logging
-
+import os
+import signal
+import sys
+from logging import NullHandler
 from pprint import pformat
 
-from logging import NullHandler
-
 import click
-from tornado.options import options
-from tornado.options import parse_command_line, parse_config_file
-from tornado.log import enable_pretty_logging
 from celery.bin.base import CeleryCommand
+from tornado.log import enable_pretty_logging
+from tornado.options import options, parse_command_line, parse_config_file
 
 from .app import Flower
+from .options import DEFAULT_CONFIG_FILE, default_options
 from .urls import settings
 from .utils import abs_path, prepend_url, strtobool
-from .options import DEFAULT_CONFIG_FILE, default_options
-from .views.auth import validate_auth_option
+from .utils.authentication import validate_auth_option
+from .utils.broker import validate_broker_api
 
 logger = logging.getLogger(__name__)
 ENV_VAR_PREFIX = 'FLOWER_'
@@ -50,8 +48,9 @@ def flower(ctx, tornado_argv):
     atexit.register(flower_app.stop)
     signal.signal(signal.SIGTERM, sigterm_handler)
 
+    port = flower_app.start_http_server()
     if not ctx.obj.quiet:
-        print_banner(app, 'ssl_options' in settings)
+        print_banner(app, 'ssl_options' in settings, port)
 
     try:
         flower_app.start()
@@ -87,8 +86,8 @@ def apply_options(prog_name, argv):
     try:
         parse_config_file(os.path.abspath(options.conf), final=False)
         parse_command_line([prog_name] + argv)
-    except IOError:
-        if os.path.basename(options.conf) != DEFAULT_CONFIG_FILE:
+    except FileNotFoundError:
+        if options.conf != DEFAULT_CONFIG_FILE:
             raise
 
 
@@ -137,14 +136,24 @@ def extract_settings():
         }
 
     if options.certfile and options.keyfile:
-        settings['ssl_options'] = dict(certfile=abs_path(options.certfile),
-                                       keyfile=abs_path(options.keyfile))
+        settings['ssl_options'] = {'certfile': abs_path(options.certfile),
+                                   'keyfile': abs_path(options.keyfile)}
         if options.ca_certs:
             settings['ssl_options']['ca_certs'] = abs_path(options.ca_certs)
+    elif options.certfile or options.keyfile:
+        logger.error("Both 'certfile' and 'keyfile' are required to enable SSL")
+        sys.exit(1)
 
     if options.auth and not validate_auth_option(options.auth):
         logger.error("Invalid '--auth' option: %s", options.auth)
         sys.exit(1)
+
+    if options.broker_api:
+        try:
+            validate_broker_api(options.broker_api)
+        except ValueError as exc:
+            logger.error("Invalid '--broker-api' option: %s", exc)
+            sys.exit(1)
 
 
 def is_flower_option(arg):
@@ -158,7 +167,7 @@ def is_flower_envvar(name):
         name[len(ENV_VAR_PREFIX):].lower() in default_options
 
 
-def print_banner(app, ssl):
+def print_banner(app, ssl, port=None):
     if not options.unix_socket:
         if options.url_prefix:
             prefix_str = f'/{options.url_prefix}/'
@@ -167,13 +176,14 @@ def print_banner(app, ssl):
 
         logger.info(
             "Visit me at http%s://%s:%s%s", 's' if ssl else '',
-            options.address or '0.0.0.0', options.port,
+            options.address or '127.0.0.1', port,
             prefix_str
         )
     else:
         logger.info("Visit me via unix socket file: %s", options.unix_socket)
 
-    logger.info('Broker: %s', app.connection().as_uri())
+    with app.connection() as conn:
+        logger.info('Broker: %s', conn.as_uri())
     logger.info(
         'Registered tasks: \n%s',
         pformat(sorted(app.tasks.keys()))

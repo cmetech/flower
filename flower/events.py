@@ -1,5 +1,7 @@
 import collections
+import glob
 import logging
+import os
 import shelve
 import threading
 import time
@@ -8,10 +10,13 @@ from functools import partial
 
 from celery.events import EventReceiver
 from celery.events.state import State
+from kombu.exceptions import OperationalError
 from prometheus_client import Counter as PrometheusCounter
 from prometheus_client import Gauge, Histogram
 from tornado.ioloop import PeriodicCallback
-from tornado.options import options
+
+from .options import options
+from .utils.search import TaskSearchEngine
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +58,53 @@ class PrometheusMetrics:
             ['worker']
         )
 
+    def observe_task(self, worker, event, task):
+        event_type = event['type']
+        name = event.get('name') or task.name or ''
+        self.events.labels(worker, event_type, name).inc()
+        if event.get('runtime'):
+            self.runtime.labels(worker, name).observe(event['runtime'])
+
+        # Prefetch metrics only make sense for tasks without a scheduled time
+        if task.eta or not task.received:
+            return
+        if event_type == 'task-received':
+            self.number_of_prefetched_tasks.labels(worker, name).inc()
+        elif event_type == 'task-started' and task.started:
+            self.prefetch_time.labels(worker, name).set(task.started - task.received)
+            self.number_of_prefetched_tasks.labels(worker, name).dec()
+        elif event_type in ('task-succeeded', 'task-failed') and task.started:
+            self.prefetch_time.labels(worker, name).set(0)
+        elif event_type in ('task-revoked', 'task-rejected') and not task.started:
+            self.number_of_prefetched_tasks.labels(worker, name).dec()
+
+    def observe_worker(self, worker, event):
+        online = {'worker-online': 1, 'worker-heartbeat': 1, 'worker-offline': 0}
+        if event['type'] in online:
+            self.worker_online.labels(worker).set(online[event['type']])
+        if event['type'] == 'worker-heartbeat' and event.get('active') is not None:
+            self.worker_number_of_currently_executing_tasks.labels(worker).set(event['active'])
+
+    def remove_workers(self, worker_names):
+        metrics = (
+            self.events,
+            self.runtime,
+            self.prefetch_time,
+            self.number_of_prefetched_tasks,
+            self.worker_online,
+            self.worker_number_of_currently_executing_tasks,
+        )
+        removed_workers = set()
+        for metric in metrics:
+            labels_to_remove = [
+                labels for labels in metric._metrics  # pylint: disable=protected-access
+                if labels and labels[0] in worker_names
+            ]
+            for labels in labels_to_remove:
+                removed_workers.add(labels[0])
+                metric.remove(*labels)
+        return len(removed_workers)
+
 
 class EventsState(State):
     # EventsState object is created and accessed only from ioloop thread
@@ -61,53 +113,40 @@ class EventsState(State):
         super().__init__(*args, **kwargs)
         self.counter = collections.defaultdict(Counter)
         self.metrics = get_prometheus_metrics()
+        self.search_engine = TaskSearchEngine()
+        self.search_engine.rebuild(self.tasks.items())
+
+    def _clear_tasks(self, ready=True):
+        super()._clear_tasks(ready)
+        self.search_engine.rebuild(self.tasks.items())
+
+    def _eviction_candidate(self, task_id):
+        # Celery discards the least recently used task when a new one
+        # arrives at the limit, so remember which one may go
+        limit = self.tasks.limit
+        if not limit or task_id in self.tasks or len(self.tasks) < limit:
+            return None
+        return next(iter(self.tasks), None)
+
+    def _index_task(self, task, evicted):
+        if evicted is not None and evicted not in self.tasks:
+            self.search_engine.remove(evicted)
+        self.search_engine.upsert(task)
 
     def event(self, event):
-        # Save the event
+        event_type, worker = event['type'], event['hostname']
+        is_task = event_type.startswith('task-')
+        evicted = self._eviction_candidate(event.get('uuid')) if is_task else None
+
         super().event(event)
+        self.counter[worker][event_type] += 1
 
-        worker_name = event['hostname']
-        event_type = event['type']
-
-        self.counter[worker_name][event_type] += 1
-
-        if event_type.startswith('task-'):
-            task_id = event['uuid']
-            task = self.tasks.get(task_id)
-            task_name = event.get('name', '')
-            if not task_name and task_id in self.tasks:
-                task_name = task.name or ''
-            self.metrics.events.labels(worker_name, event_type, task_name).inc()
-
-            runtime = event.get('runtime', 0)
-            if runtime:
-                self.metrics.runtime.labels(worker_name, task_name).observe(runtime)
-
-            task_started = task.started
-            task_received = task.received
-
-            if event_type == 'task-received' and not task.eta and task_received:
-                self.metrics.number_of_prefetched_tasks.labels(worker_name, task_name).inc()
-
-            if event_type == 'task-started' and not task.eta and task_started and task_received:
-                self.metrics.prefetch_time.labels(worker_name, task_name).set(task_started - task_received)
-                self.metrics.number_of_prefetched_tasks.labels(worker_name, task_name).dec()
-
-            if event_type in ['task-succeeded', 'task-failed'] and not task.eta and task_started and task_received:
-                self.metrics.prefetch_time.labels(worker_name, task_name).set(0)
-
-        if event_type == 'worker-online':
-            self.metrics.worker_online.labels(worker_name).set(1)
-
-        if event_type == 'worker-heartbeat':
-            self.metrics.worker_online.labels(worker_name).set(1)
-
-            num_executing_tasks = event.get('active')
-            if num_executing_tasks is not None:
-                self.metrics.worker_number_of_currently_executing_tasks.labels(worker_name).set(num_executing_tasks)
-
-        if event_type == 'worker-offline':
-            self.metrics.worker_online.labels(worker_name).set(0)
+        if is_task:
+            task = self.tasks[event['uuid']]
+            self._index_task(task, evicted)
+            self.metrics.observe_task(worker, event, task)
+        else:
+            self.metrics.observe_worker(worker, event)
 
 
 class Events(threading.Thread):
@@ -116,7 +155,7 @@ class Events(threading.Thread):
     # pylint: disable=too-many-arguments
     def __init__(self, capp, io_loop, db=None, persistent=False,
                  enable_events=True, state_save_interval=0,
-                 **kwargs):
+                 *, max_tasks_in_memory, **kwargs):
         threading.Thread.__init__(self)
         self.daemon = True
 
@@ -128,20 +167,21 @@ class Events(threading.Thread):
         self.enable_events = enable_events
         self.state = None
         self.state_save_timer = None
+        self.state_save_interval = state_save_interval
 
         if self.persistent:
-            logger.debug("Loading state from '%s'...", self.db)
-            state = shelve.open(self.db)
-            if state:
-                self.state = state['events']
-            state.close()
+            self.state = self.load_state()
+            if self.state:
+                # A restored state keeps the limit it was saved with
+                self.state.max_tasks_in_memory = self.state.tasks.limit = max_tasks_in_memory
+                self.state.tasks.update()
 
             if state_save_interval:
                 self.state_save_timer = PeriodicCallback(self.save_state,
                                                          state_save_interval)
 
         if not self.state:
-            self.state = EventsState(**kwargs)
+            self.state = EventsState(max_tasks_in_memory=max_tasks_in_memory, **kwargs)
 
         self.timer = PeriodicCallback(self.on_enable_events,
                                       self.events_enable_interval)
@@ -182,11 +222,8 @@ class Events(threading.Thread):
                     logger.debug("Capturing events...")
                     recv.capture(limit=None, timeout=None, wakeup=True)
             except (KeyboardInterrupt, SystemExit):
-                try:
-                    import _thread as thread
-                except ImportError:
-                    import thread
-                thread.interrupt_main()
+                import _thread
+                _thread.interrupt_main()
             except Exception as e:
                 logger.error("Failed to capture events: '%s', "
                              "trying again in %s seconds.",
@@ -194,16 +231,51 @@ class Events(threading.Thread):
                 logger.debug(e, exc_info=True)
                 time.sleep(try_interval)
 
+    def load_state(self):
+        logger.debug("Loading state from '%s'...", self.db)
+        try:
+            with shelve.open(self.db) as state:
+                if not state:
+                    return None
+                events = state['events']
+                events.counter.update(state.get('counter', {}))
+                return events
+        except Exception as e:
+            logger.error("Failed to load state from '%s', moving it aside "
+                         "and starting fresh: %s", self.db, e)
+            # dbm backends may add suffixes like .db or .dat to the actual files
+            for suffix in ('', '.db', '.dat', '.dir', '.bak'):
+                name = self.db + suffix
+                if os.path.exists(name):
+                    os.replace(name, f'{name}.corrupt')
+            return None
+
     def save_state(self):
         logger.debug("Saving state to '%s'...", self.db)
-        state = shelve.open(self.db, flag='n')
-        state['events'] = self.state
-        state.close()
+        started = time.monotonic()
+        tmp = f'{self.db}.tmp'
+        with shelve.open(tmp, flag='n') as state:
+            state['events'] = self.state
+            state['counter'] = dict(self.state.counter)
+        # dbm backends may add suffixes like .db or .dat to the actual files
+        for name in glob.glob(glob.escape(tmp) + '*'):
+            os.replace(name, self.db + name[len(tmp):])
 
-    def on_enable_events(self):
+        elapsed = time.monotonic() - started
+        interval_seconds = self.state_save_interval / 1000
+        if self.state_save_timer and elapsed > interval_seconds / 10:
+            logger.warning(
+                "Saving state took %.1fs, consider increasing "
+                "--state-save-interval or decreasing --max-tasks", elapsed)
+
+    async def on_enable_events(self):
         # Periodically enable events for workers
         # launched after flower
-        self.io_loop.run_in_executor(None, self.capp.control.enable_events)
+        try:
+            await self.io_loop.run_in_executor(
+                None, self.capp.control.enable_events)
+        except OperationalError as exc:
+            logger.warning("Failed to enable events: %s", exc)
 
     def on_event(self, event):
         # Call EventsState.event in ioloop thread to avoid synchronization

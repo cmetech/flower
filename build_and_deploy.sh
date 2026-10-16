@@ -3,8 +3,8 @@
 # ============================================================================
 # OSCAR Flower Build and Deploy Script
 # ============================================================================
-# This script rebuilds the oscar-flower wheel and deploys it to taskmanager
-# After running this, simply execute: ./oscar compile taskmanager
+# This script packages the checked-in Flower assets and copies the wheel to taskmanager.
+# Rebuild vendored Bootstrap assets with scss/build.sh only when scss/flower.scss changes.
 # ============================================================================
 
 set -e  # Exit on error
@@ -20,30 +20,26 @@ echo -e "${YELLOW}OSCAR Flower Build & Deploy${NC}"
 echo -e "${YELLOW}========================================${NC}"
 echo ""
 
-# Step 1: Compile SCSS to CSS
-echo -e "${GREEN}[1/4] Compiling SCSS to CSS...${NC}"
 cd "$(dirname "$0")"
-npx sass bootstrap-scss/flower.scss:flower/static/css/flower.css --style compressed
-echo -e "${GREEN}✓ SCSS compiled successfully${NC}"
-echo ""
+TASKMANAGER_DIR="${TASKMANAGER_WHEELS_DIR:-../oscar/oscar-taskmanager/wheels}"
+if [ ! -f "$(dirname "$TASKMANAGER_DIR")/Dockerfile" ]; then
+  echo "Taskmanager checkout not found; set TASKMANAGER_WHEELS_DIR to its wheels directory." >&2
+  exit 1
+fi
 
-# Step 2: Clean old builds
-echo -e "${GREEN}[2/4] Cleaning old builds...${NC}"
+echo -e "${GREEN}[1/3] Cleaning old builds...${NC}"
 rm -rf build/ dist/ *.egg-info
 echo -e "${GREEN}✓ Old builds cleaned${NC}"
 echo ""
 
-# Step 3: Build wheel
-echo -e "${GREEN}[3/4] Building wheel package...${NC}"
+echo -e "${GREEN}[2/3] Building wheel package...${NC}"
 python setup.py sdist bdist_wheel
 WHEEL_FILE=$(ls dist/oscar_flower-*.whl)
 WHEEL_NAME=$(basename "$WHEEL_FILE")
 echo -e "${GREEN}✓ Built: $WHEEL_NAME${NC}"
 echo ""
 
-# Step 4: Copy to taskmanager
-echo -e "${GREEN}[4/4] Deploying to taskmanager...${NC}"
-TASKMANAGER_DIR="../oscar/oscar-taskmanager/wheels"
+echo -e "${GREEN}[3/3] Deploying to taskmanager...${NC}"
 
 # Create wheels directory if it doesn't exist
 mkdir -p "$TASKMANAGER_DIR"
