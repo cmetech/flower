@@ -18,9 +18,10 @@ Build AdminUI and Taskmanager from their feature branches and reload reverseprox
 
 - Astra adversarial plan review: no remaining BLOCK/HIGH findings before implementation.
 - AdminUI production build: passed. New targeted suites: 19/19 passed.
-- Flower views: 117/117 passed. Node theme tests: 6/6 passed. Wheel ZIP: 59 entries with theme JS, CSS, navbar, and Ericsson images.
+- Flower views: 117/117 passed. Node theme tests: 7/7 passed. Wheel ZIP: 59 entries with theme JS, CSS, navbar, and Ericsson images; packaged JS and CSS byte-match current source.
 - Reverseproxy Go template rendered and parsed as YAML; narrow router source test: 1/1 passed. A Traefik executable was unavailable for runtime validation.
 - Isolated local browser fixture: Classic and Modern in light and dark, direct navigation, manual override/reset, focus refresh, API outage, and missing font fallback. Sampled active navigation, eyebrow, worker tab, skip link, primary/outline/danger buttons, and status badges all computed at or above 4.5:1 text contrast.
+- Astra's final code review found three Medium defects: worker Online badge contrast, unmapped control/focus roles, and unreadable success labels before the API responds. All three were reproduced, fixed, and verified in the browser; Modern dark control border now computes to `#A0A0A0`, focus border to `#D6E2F5`, the Classic Online badge to 7.28:1, and the offline fallback success badge to 7.28:1.
 - Broader baseline: AdminUI `yarn test` had 4,949 passed, three expected failures, and one existing Modern dark grid-header expectation failure reproduced on untouched main. Flower `tests/unit` had 351 passed and two failures also reproduced on untouched upstream Flower master (`redis Retry.get_retries` API and macOS `/private/var` temp path).
 
 Integrated routing and UAT against a deployed stack remain for the later deployment step.
