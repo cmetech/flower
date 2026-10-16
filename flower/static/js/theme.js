@@ -106,7 +106,7 @@
             set("--flower-" + pair[0], status.main);
             set("--flower-on-" + pair[0], readable(status.main, status.contrastText));
         });
-        set("--bs-body-font-family", tokens.typography.fontId === "hilda" ? '"OSCAR Hilda", Arial, sans-serif' : 'system-ui, -apple-system, "Segoe UI", sans-serif');
+        set("--bs-body-font-family", tokens.typography.fontId === "hilda" ? '"OSCAR Hilda", Arial, sans-serif' : '"Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"');
         set("--bs-font-monospace", tokens.typography.monoFontId === "hilda-mono" ? '"OSCAR Hilda Mono", monospace' : "monospace");
         set("--bs-body-font-size", tokens.typography.bodySize + "px");
         set("--bs-border-radius", tokens.geometry.radius + "px");

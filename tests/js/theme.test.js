@@ -106,6 +106,7 @@ test('invalid data and failures retain the last good palette', async () => {
 test('Classic null roles, rgba text, and yellow primary fill remain usable', async () => {
   const app = boot();
   await app.answer(0, palette('light'));
+  assert.match(app.css['--bs-body-font-family'], /Montserrat/);
   assert.match(app.css['--bs-body-color-rgb'], /^\d+, \d+, \d+$/);
   assert.match(app.css['--bs-link-color'], /^#/);
   assert.equal(app.css['--flower-on-primary'], '#242424');
