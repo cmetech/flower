@@ -115,3 +115,14 @@ test('Classic null roles, rgba text, and yellow primary fill remain usable', asy
   assert.equal(app.css['--bs-body-color-rgb'], '255, 255, 255');
   assert.equal(app.css['--bs-primary-rgb'], '17, 116, 230');
 });
+
+test('resolved control border and focus roles reach input and button variables', async () => {
+  const app = boot();
+  const light = mode('#1174E6', '#F2F2F2', '#242424', 'hilda');
+  light.interaction.controlBorder = '#767676';
+  light.interaction.focus = '#000082';
+  await app.answer(0, palette('light', light));
+  assert.equal(app.css['--flower-control-border'], '#767676');
+  assert.equal(app.css['--flower-focus'], '#000082');
+  assert.equal(app.css['--flower-focus-rgb'], '0, 0, 130');
+});

@@ -5,7 +5,16 @@
   --bs-body-color-rgb: 58, 53, 65;
   --bs-primary: #c6a823;
   --bs-primary-rgb: 198, 168, 35;
+  --bs-success: #56ca00;
+  --bs-success-rgb: 86, 202, 0;
+  --bs-warning: #ffb400;
+  --bs-warning-rgb: 255, 180, 0;
+  --bs-danger: #ff4c51;
+  --bs-danger-rgb: 255, 76, 81;
   --bs-border-color: rgba(58, 53, 65, 0.12);
+  --flower-control-border: rgba(58, 53, 65, 0.12);
+  --flower-focus: #3a3541;
+  --flower-focus-rgb: 58, 53, 65;
   --bs-primary-bg-subtle: #fff7d2;
   --bs-primary-border-subtle: #c6a823;
   --bs-link-color: #3a3541;
@@ -19,11 +28,11 @@
   --flower-on-primary: #242424;
   --flower-on-success: #242424;
   --flower-on-warning: #242424;
-  --flower-on-danger: #ffffff;
+  --flower-on-danger: #242424;
   --flower-active: #3a3541;
-  --flower-success: #237a3b;
-  --flower-warning: #a15c00;
-  --flower-danger: #b42318;
+  --flower-success: #56ca00;
+  --flower-warning: #ffb400;
+  --flower-danger: #ff4c51;
   --flower-radius: 0.75rem;
   --flower-shadow: 0 1px 2px rgba(23, 32, 18, 0.04), 0 8px 24px rgba(23, 32, 18, 0.05);
 }
@@ -34,6 +43,9 @@
   --bs-body-bg: #242424;
   --bs-body-bg-rgb: 36, 36, 36;
   --bs-border-color: rgba(231, 227, 252, 0.12);
+  --flower-control-border: rgba(231, 227, 252, 0.12);
+  --flower-focus: #fad22d;
+  --flower-focus-rgb: 250, 210, 45;
   --bs-primary: #fad22d;
   --bs-primary-rgb: 250, 210, 45;
   --bs-primary-bg-subtle: #4a4020;
@@ -65,6 +77,7 @@
 @font-face { font-family: 'OSCAR Hilda Mono'; src: url('/fonts/branding/ericsson-hilda-mono-bold.woff2') format('woff2'); font-weight: 700; font-display: block; }
 
 .btn-primary {
+  --bs-btn-focus-shadow-rgb: var(--flower-focus-rgb);
   --bs-btn-color: var(--flower-on-primary);
   --bs-btn-bg: var(--bs-primary);
   --bs-btn-border-color: var(--bs-primary);
@@ -77,6 +90,7 @@
 }
 
 .btn-outline-primary {
+  --bs-btn-focus-shadow-rgb: var(--flower-focus-rgb);
   --bs-btn-color: var(--flower-accent-text);
   --bs-btn-border-color: var(--flower-accent-text);
   --bs-btn-hover-color: var(--flower-on-primary);
@@ -88,6 +102,7 @@
 }
 
 .btn-danger {
+  --bs-btn-focus-shadow-rgb: var(--flower-focus-rgb);
   --bs-btn-color: var(--flower-on-danger);
   --bs-btn-bg: var(--bs-danger);
   --bs-btn-border-color: var(--bs-danger);
@@ -96,9 +111,15 @@
   --bs-btn-hover-border-color: var(--bs-danger);
 }
 
-.text-bg-success { color: var(--flower-on-success) !important; background-color: var(--bs-success) !important; }
+.text-bg-success, .badge.bg-success { color: var(--flower-on-success) !important; background-color: var(--bs-success) !important; }
 .text-bg-warning { color: var(--flower-on-warning) !important; background-color: var(--bs-warning) !important; }
 .text-bg-danger { color: var(--flower-on-danger) !important; background-color: var(--bs-danger) !important; }
+
+.form-control, .form-select { border-color: var(--flower-control-border); }
+.form-control:focus, .form-select:focus {
+  border-color: var(--flower-focus);
+  box-shadow: 0 0 0 0.25rem rgba(var(--flower-focus-rgb), 0.25);
+}
 
 body.app-body {
   min-width: 20rem;

@@ -59,7 +59,7 @@
         var s = tokens.surface, t = tokens.text, i = tokens.interaction, st = tokens.status;
         var required = [s.canvas, s.paper, s.divider, t.primary, t.secondary, i.primary,
             st.success && st.success.main, st.warning && st.warning.main, st.error && st.error.main];
-        var optional = [s.gridHeader, i.onPrimary, i.link, i.focus, i.selectedBg, i.selectedText,
+        var optional = [s.gridHeader, i.onPrimary, i.link, i.focus, i.controlBorder, i.selectedBg, i.selectedText,
             st.success && st.success.contrastText, st.warning && st.warning.contrastText, st.error && st.error.contrastText];
         return required.every(color) && optional.every(function (value) { return value == null || color(value); }) &&
             ["legacy", "hilda"].includes(tokens.typography.fontId) &&
@@ -88,8 +88,12 @@
         setColor("link-color", link);
         set("--bs-link-hover-color", link);
         set("--bs-link-hover-color-rgb", rgb(link).join(", "));
+        var focus = i.focus || link;
         set("--bs-border-color", s.divider);
-        set("--bs-focus-ring-color", i.focus || link);
+        set("--bs-focus-ring-color", focus);
+        set("--flower-control-border", i.controlBorder || s.divider);
+        set("--flower-focus", focus);
+        set("--flower-focus-rgb", rgb(focus, s.paper).join(", "));
         set("--bs-primary-bg-subtle", selectedBg);
         set("--bs-primary-border-subtle", s.divider);
         set("--flower-surface", s.paper);
