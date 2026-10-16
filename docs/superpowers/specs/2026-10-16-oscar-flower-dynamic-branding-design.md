@@ -56,7 +56,7 @@ The wheel includes the Ericsson logo assets already present in the custom branch
 
 ## Fonts and routing
 
-Flower loads Hilda only when the resolved typography asks for it. Its `@font-face` declarations use the existing AdminUI files under `/fonts/branding/`. Traefik exposes only `GET /api/branding/flower` and the `/fonts/branding/` static path on Flower's `:5555` entry point, forwarding them to AdminUI. The existing `/flower` route remains Flower's own service. The font route serves the same immutable local WOFF2 files as AdminUI; no font CDN or copied font bundle is added. A failed font request falls back to the resolver's safe system stack. Before any API response, the packaged fallback is OSCAR Classic-like: dark canvas `#242424`, paper `#3A3A3A`, text `#F2F2F2`, primary `#FAD22D`; light canvas `#FFFFFF`, paper `#FAFAFA`, text `#0C0C0C`, primary `#C6A823`.
+Flower loads Hilda only when the resolved typography asks for it. Its `@font-face` declarations use the existing AdminUI files under `/fonts/branding/`. Traefik exposes only `GET /api/branding/flower/` (plus its no-slash redirect source) and the `/fonts/branding/` static path on Flower's `:5555` entry point, forwarding them to AdminUI. The existing `/flower` route remains Flower's own service. The font route serves the same immutable local WOFF2 files as AdminUI; no font CDN or copied font bundle is added. A failed font request falls back to the resolver's safe system stack. Before any API response, the packaged fallback is OSCAR Classic-like: dark canvas `#242424`, paper `#3A3A3A`, text `#F2F2F2`, primary `#FAD22D`; light canvas `#FFFFFF`, paper `#FAFAFA`, text `#0C0C0C`, primary `#C6A823`.
 
 ## Accessibility and security
 
